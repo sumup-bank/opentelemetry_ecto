@@ -38,67 +38,79 @@ defmodule OpentelemetryEcto do
         %{query: query, source: source, result: query_result, repo: repo, type: type},
         config
       ) do
-    # Doing all this even if the span isn't sampled so the sampler
-    # could technically use the attributes to decide if it should sample or not
 
-    total_time = measurements.total_time
-    end_time = :opentelemetry.timestamp()
-    start_time = end_time - total_time
-    database = repo.config()[:database]
+    with :ok <- can_record_event(query, config) do
+      total_time = measurements.total_time
+      end_time = :opentelemetry.timestamp()
+      start_time = end_time - total_time
+      database = repo.config()[:database]
 
-    url =
-      case repo.config()[:url] do
-        nil ->
-          # TODO: add port
-          URI.to_string(%URI{scheme: "ecto", host: repo.config()[:hostname]})
+      url =
+        case repo.config()[:url] do
+          nil ->
+            # TODO: add port
+            URI.to_string(%URI{scheme: "ecto", host: repo.config()[:hostname]})
 
-        url ->
-          url
-      end
+          url ->
+            url
+        end
 
-    span_name =
-      case Keyword.fetch(config, :span_prefix) do
-        {:ok, prefix} -> prefix
-        :error -> Enum.join(event, ".")
-      end <> ":#{source}"
+      span_name =
+        case Keyword.fetch(config, :span_prefix) do
+          {:ok, prefix} -> prefix
+          :error -> Enum.join(event, ".")
+        end <> ":#{source}"
 
-    time_unit = Keyword.get(config, :time_unit, :microsecond)
+      time_unit = Keyword.get(config, :time_unit, :microsecond)
 
-    db_type =
-      case type do
-        :ecto_sql_query -> :sql
-        _ -> type
-      end
+      db_type =
+        case type do
+          :ecto_sql_query -> :sql
+          _ -> type
+        end
 
-    result =
-      case query_result do
-        {:ok, _} -> []
-        _ -> [error: true]
-      end
+      result =
+        case query_result do
+          {:ok, _} -> []
+          _ -> [error: true]
+        end
 
-    # TODO: need connection information to complete the required attributes
-    # net.peer.name or net.peer.ip and net.peer.port
-    base_attributes =
-      Keyword.merge(result,
-        "db.type": db_type,
-        "db.statement": query,
-        source: source,
-        "db.instance": database,
-        "db.url": url,
-        "total_time_#{time_unit}s": System.convert_time_unit(total_time, :native, time_unit)
-      )
+      # TODO: need connection information to complete the required attributes
+      # net.peer.name or net.peer.ip and net.peer.port
+      base_attributes =
+        Keyword.merge(result,
+          "db.type": db_type,
+          "db.statement": query,
+          source: source,
+          "db.instance": database,
+          "db.url": url,
+          "total_time_#{time_unit}s": System.convert_time_unit(total_time, :native, time_unit)
+        )
 
-    attributes =
-      measurements
-      |> Enum.into(%{})
-      |> Map.take(~w(decode_time query_time queue_time)a)
-      |> Enum.reject(&is_nil(elem(&1, 1)))
-      |> Enum.map(fn {k, v} ->
-        {String.to_atom("#{k}_#{time_unit}s"), System.convert_time_unit(v, :native, time_unit)}
-      end)
+      attributes =
+        measurements
+        |> Enum.into(%{})
+        |> Map.take(~w(decode_time query_time queue_time)a)
+        |> Enum.reject(&is_nil(elem(&1, 1)))
+        |> Enum.map(fn {k, v} ->
+          {String.to_atom("#{k}_#{time_unit}s"), System.convert_time_unit(v, :native, time_unit)}
+        end)
 
-    s = OpenTelemetry.Tracer.start_span(span_name, %{start_time: start_time, attributes: attributes ++ base_attributes})
+      s =
+        OpenTelemetry.Tracer.start_span(span_name, %{start_time: start_time, attributes: attributes ++ base_attributes})
 
-    OpenTelemetry.Span.end_span(s)
+      OpenTelemetry.Span.end_span(s)
+    end
   end
+
+  defp can_record_event(query, [ignored_queries: ignored_queries]) do
+    ignored_queries
+    |> Enum.any?(fn x -> x == query end)
+    |> case do
+      false -> :ok
+      _ -> :error
+    end
+  end
+
+  defp can_record_event(_, _), do: :ok
 end

@@ -47,6 +47,14 @@ defmodule OpentelemetryEctoTest do
            ] = List.keysort(list, 0)
   end
 
+  test "ignore query events based on config ignored_queries" do
+    attach_handler([ignored_queries: ["SELECT u0.\"id\", u0.\"email\" FROM \"users\" AS u0"]])
+
+    Repo.all(User)
+
+    refute_receive {:span, span(name: "opentelemetry_ecto.test_repo.query:users")}
+  end
+
   test "changes the time unit" do
     attach_handler(time_unit: :millisecond)
 
