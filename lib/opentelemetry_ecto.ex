@@ -75,6 +75,11 @@ defmodule OpentelemetryEcto do
           _ -> [error: true]
         end
 
+      request_id = case Logger.metadata() do
+        [request_id: value] -> value
+        _ -> nil
+      end
+
       # TODO: need connection information to complete the required attributes
       # net.peer.name or net.peer.ip and net.peer.port
       base_attributes =
@@ -84,6 +89,7 @@ defmodule OpentelemetryEcto do
           source: source,
           "db.instance": database,
           "db.url": url,
+          "request_id": request_id,
           "total_time_#{time_unit}s": System.convert_time_unit(total_time, :native, time_unit)
         )
 
