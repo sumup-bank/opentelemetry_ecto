@@ -75,11 +75,6 @@ defmodule OpentelemetryEcto do
           _ -> [error: true]
         end
 
-      request_id = case Logger.metadata() do
-        [request_id: value] -> value
-        _ -> nil
-      end
-
       # TODO: need connection information to complete the required attributes
       # net.peer.name or net.peer.ip and net.peer.port
       base_attributes =
@@ -89,9 +84,8 @@ defmodule OpentelemetryEcto do
           source: source,
           "db.instance": database,
           "db.url": url,
-          "request_id": request_id,
           "total_time_#{time_unit}s": System.convert_time_unit(total_time, :native, time_unit)
-        )
+        ) ++ build_additional_attributes(config)
 
       attributes =
         measurements
@@ -119,4 +113,18 @@ defmodule OpentelemetryEcto do
   end
 
   defp can_record_event(_, _), do: :ok
+
+  defp build_additional_attributes(config) when is_list(config) do
+    case config[:additional_attributes] do
+      {func, args} ->
+        apply(func, args)
+
+      [] = attributes ->
+        attributes
+
+      _ -> []
+    end
+  end
+
+  defp build_additional_attributes(_), do: []
 end

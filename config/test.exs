@@ -7,6 +7,7 @@ config :opentelemetry_ecto, OpentelemetryEcto.TestRepo,
   hostname: "localhost",
   username: "postgres",
   database: "opentelemetry_ecto_test",
+  password: "postgres",
   pool: Ecto.Adapters.SQL.Sandbox
 
 config :opentelemetry,
